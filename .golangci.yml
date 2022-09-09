@@ -1,31 +1,43 @@
 linters:
   disable-all: true
   enable:
+  - asasalint
   - asciicheck
   - bodyclose
+  - containedctx
+  - decorder
   - depguard
   - dogsled
   - errcheck
+  - errchkjson
+  - execinquery
   - exportloopref
   - gci
   - goconst
   - gocritic
+  - gocyclo
   - godot
   - gofmt
+  - goheader
   - goimports
   - goprintffuncname
   - gosec
   - gosimple
   - govet
+  - grouper
   - importas
   - ineffassign
+  - logrlint
+  - maintidx
   - misspell
   - nakedret
   - nilerr
   - noctx
   - nolintlint
+  - nosprintfhostport
   - prealloc
   - predeclared
+  - reassign
   - revive
   - rowserrcheck
   - staticcheck
@@ -35,6 +47,7 @@ linters:
   - unconvert
   - unparam
   - unused
+  - usestdlibvars
   - whitespace
 
 linters-settings:
