@@ -186,8 +186,10 @@ func (s *ClusterScope) updateDefaultSG(sgID string) error {
 	options.SetSecurityGroupID(sgID)
 	options.SetSecurityGroupRulePrototype(&vpcv1.SecurityGroupRulePrototype{
 		Direction: core.StringPtr("inbound"),
-		Protocol:  core.StringPtr("all"),
+		Protocol:  core.StringPtr("tcp"),
 		IPVersion: core.StringPtr("ipv4"),
+		PortMin:   core.Int64Ptr(6443),
+		PortMax:   core.Int64Ptr(6443),
 	})
 	_, _, err := s.IBMVPCClient.CreateSecurityGroupRule(options)
 	if err != nil {
