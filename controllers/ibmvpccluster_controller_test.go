@@ -133,158 +133,6 @@ func TestIBMVPCClusterReconciler_Reconcile(t *testing.T) {
 }
 
 func TestIBMVPCClusterReconciler_reconcile(t *testing.T) {
-	var (
-		mockvpc      *mock.MockVpc
-		mockCtrl     *gomock.Controller
-		clusterScope *scope.ClusterScope
-		reconciler   IBMVPCClusterReconciler
-	)
-
-	setup := func(t *testing.T) {
-		t.Helper()
-		mockCtrl = gomock.NewController(t)
-		mockvpc = mock.NewMockVpc(mockCtrl)
-		reconciler = IBMVPCClusterReconciler{
-			Client: testEnv.Client,
-			Log:    klogr.New(),
-		}
-		clusterScope = &scope.ClusterScope{
-			IBMVPCClient: mockvpc,
-			Cluster:      &capiv1beta1.Cluster{},
-			Logger:       klogr.New(),
-			IBMVPCCluster: &infrav1beta2.IBMVPCCluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "vpc-cluster",
-				},
-				Spec: infrav1beta2.IBMVPCClusterSpec{
-					VPC: "capi-vpc",
-				},
-			},
-		}
-	}
-	teardown := func() {
-		mockCtrl.Finish()
-	}
-
-	t.Run("Reconciling creating IBMVPCCluster", func(t *testing.T) {
-		t.Run("Should add finalizer if not present", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			_, err := reconciler.reconcile(clusterScope)
-			g.Expect(err).To(BeNil())
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
-		listVpcsOptions := &vpcv1.ListVpcsOptions{}
-		response := &core.DetailedResponse{}
-		vpclist := &vpcv1.VPCCollection{}
-		t.Run("Should fail to reconcile IBMVPCCluster", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
-			mockvpc.EXPECT().ListVpcs(listVpcsOptions).Return(vpclist, response, errors.New("failed to list VPCs"))
-			_, err := reconciler.reconcile(clusterScope)
-			g.Expect(err).To(Not(BeNil()))
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		vpclist.Vpcs = []vpcv1.VPC{
-			{
-				Name: pointer.String("capi-vpc"),
-				ID:   pointer.String("capi-vpc-id"),
-			},
-		}
-		listFloatingIpsOptions := &vpcv1.ListFloatingIpsOptions{}
-		fips := &vpcv1.FloatingIPCollection{}
-		t.Run("Should fail to reserve FIP", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
-			mockvpc.EXPECT().ListVpcs(listVpcsOptions).Return(vpclist, response, nil)
-			mockvpc.EXPECT().ListFloatingIps(listFloatingIpsOptions).Return(fips, response, errors.New("failed to list the FIPs"))
-			_, err := reconciler.reconcile(clusterScope)
-			g.Expect(err).To(Not(BeNil()))
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		fips.FloatingIps = []vpcv1.FloatingIP{
-			{
-				Name:    pointer.String("vpc-cluster-control-plane"),
-				Address: pointer.String("192.98.98.45"),
-				ID:      pointer.String("capi-fip-id"),
-			},
-		}
-		options := &vpcv1.ListSubnetsOptions{}
-		subnets := &vpcv1.SubnetCollection{}
-		t.Run("Should fail to create subnet", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
-			mockvpc.EXPECT().ListVpcs(listVpcsOptions).Return(vpclist, response, nil)
-			mockvpc.EXPECT().ListFloatingIps(listFloatingIpsOptions).Return(fips, response, nil)
-			mockvpc.EXPECT().ListSubnets(options).Return(subnets, response, errors.New("Failed to list the subnets"))
-			_, err := reconciler.reconcile(clusterScope)
-			g.Expect(err).To(Not(BeNil()))
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		subnets.Subnets = []vpcv1.Subnet{
-			{
-				ID:   pointer.String("capi-subnet-id"),
-				Name: pointer.String("vpc-cluster-subnet"),
-				Zone: &vpcv1.ZoneReference{
-					Name: pointer.String("foo"),
-				},
-			},
-		}
-		t.Run("Should successfully reconcile IBMVPCCluster and set cluster status as Ready", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
-			mockvpc.EXPECT().ListVpcs(listVpcsOptions).Return(vpclist, response, nil)
-			mockvpc.EXPECT().ListFloatingIps(listFloatingIpsOptions).Return(fips, response, nil)
-			mockvpc.EXPECT().ListSubnets(options).Return(subnets, response, nil)
-			_, err := reconciler.reconcile(clusterScope)
-			g.Expect(err).To(BeNil())
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-			g.Expect(clusterScope.IBMVPCCluster.Status.Ready).To(Equal(true))
-		})
-		t.Run("Should use the user supplied port for the apiserver", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
-			port := int32(412)
-			clusterScope.Cluster.Spec.ClusterNetwork = &capiv1beta1.ClusterNetwork{APIServerPort: &port}
-			mockvpc.EXPECT().ListVpcs(listVpcsOptions).Return(vpclist, response, nil)
-			mockvpc.EXPECT().ListFloatingIps(listFloatingIpsOptions).Return(fips, response, nil)
-			mockvpc.EXPECT().ListSubnets(options).Return(subnets, response, nil)
-			_, err := reconciler.reconcile(clusterScope)
-			g.Expect(err).To(BeNil())
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-			g.Expect(clusterScope.IBMVPCCluster.Status.Ready).To(Equal(true))
-			g.Expect(clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Port).To(Equal(port))
-		})
-		t.Run("Should use the default port for the apiserver if not specified", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
-			mockvpc.EXPECT().ListVpcs(listVpcsOptions).Return(vpclist, response, nil)
-			mockvpc.EXPECT().ListFloatingIps(listFloatingIpsOptions).Return(fips, response, nil)
-			mockvpc.EXPECT().ListSubnets(options).Return(subnets, response, nil)
-			_, err := reconciler.reconcile(clusterScope)
-			g.Expect(err).To(BeNil())
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-			g.Expect(clusterScope.IBMVPCCluster.Status.Ready).To(Equal(true))
-			g.Expect(clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Port).To(Equal(int32(6443)))
-		})
-	})
-}
-
-func TestIBMVPCClusterLBReconciler_reconcile(t *testing.T) {
 	setup := func(t *testing.T) (*gomock.Controller, *mock.MockVpc, *scope.ClusterScope, IBMVPCClusterReconciler) {
 		t.Helper()
 		mockvpc := mock.NewMockVpc(gomock.NewController(t))
@@ -343,6 +191,36 @@ func TestIBMVPCClusterLBReconciler_reconcile(t *testing.T) {
 			},
 		}
 
+		t.Run("Should add finalizer if not present", func(t *testing.T) {
+			g := NewWithT(t)
+			mockController, _, clusterScope, reconciler := setup(t)
+			setup(t)
+			t.Cleanup(mockController.Finish)
+			_, err := reconciler.reconcile(clusterScope)
+			g.Expect(err).To(BeNil())
+			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
+		})
+		t.Run("Should fail to reconcile IBMVPCCluster", func(t *testing.T) {
+			g := NewWithT(t)
+			mockController, mockvpc, clusterScope, reconciler := setup(t)
+			t.Cleanup(mockController.Finish)
+			clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
+			mockvpc.EXPECT().ListVpcs(&vpcv1.ListVpcsOptions{}).Return(vpclist, &core.DetailedResponse{}, errors.New("failed to list VPCs"))
+			_, err := reconciler.reconcile(clusterScope)
+			g.Expect(err).To(Not(BeNil()))
+			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
+		})
+		t.Run("Should fail to create subnet", func(t *testing.T) {
+			g := NewWithT(t)
+			mockController, mockvpc, clusterScope, reconciler := setup(t)
+			t.Cleanup(mockController.Finish)
+			clusterScope.IBMVPCCluster.Finalizers = []string{infrav1beta2.ClusterFinalizer}
+			mockvpc.EXPECT().ListVpcs(&vpcv1.ListVpcsOptions{}).Return(vpclist, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().ListSubnets(&vpcv1.ListSubnetsOptions{}).Return(&vpcv1.SubnetCollection{}, &core.DetailedResponse{}, errors.New("Failed to list the subnets"))
+			_, err := reconciler.reconcile(clusterScope)
+			g.Expect(err).To(Not(BeNil()))
+			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
+		})
 		t.Run("Should fail to create LoadBalancer", func(t *testing.T) {
 			g := NewWithT(t)
 			mockController, mockvpc, clusterScope, reconciler := setup(t)
@@ -417,145 +295,6 @@ func TestIBMVPCClusterLBReconciler_reconcile(t *testing.T) {
 }
 
 func TestIBMVPCClusterReconciler_delete(t *testing.T) {
-	var (
-		mockvpc      *mock.MockVpc
-		mockCtrl     *gomock.Controller
-		clusterScope *scope.ClusterScope
-		reconciler   IBMVPCClusterReconciler
-	)
-
-	setup := func(t *testing.T) {
-		t.Helper()
-		mockCtrl = gomock.NewController(t)
-		mockvpc = mock.NewMockVpc(mockCtrl)
-		reconciler = IBMVPCClusterReconciler{
-			Client: testEnv.Client,
-			Log:    klogr.New(),
-		}
-		clusterScope = &scope.ClusterScope{
-			IBMVPCClient: mockvpc,
-			Logger:       klogr.New(),
-			IBMVPCCluster: &infrav1beta2.IBMVPCCluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Finalizers: []string{infrav1beta2.ClusterFinalizer},
-				},
-				Status: infrav1beta2.IBMVPCClusterStatus{
-					VPCEndpoint: infrav1beta2.VPCEndpoint{
-						FIPID: pointer.String("capi-fip-id"),
-					},
-					Subnet: infrav1beta2.Subnet{
-						ID: pointer.String("capi-subnet-id"),
-					},
-					VPC: infrav1beta2.VPC{
-						ID: "capi-vpc-id",
-					},
-				},
-			},
-		}
-	}
-	teardown := func() {
-		mockCtrl.Finish()
-	}
-
-	listVSIOpts := &vpcv1.ListInstancesOptions{
-		VPCID: pointer.String("capi-vpc-id"),
-	}
-	response := &core.DetailedResponse{}
-	instancelist := &vpcv1.InstanceCollection{}
-	t.Run("Reconciling deleting IBMVPCCluster", func(t *testing.T) {
-		t.Run("Should fail to list instances", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, response, errors.New("Failed to list the VSIs"))
-			_, err := reconciler.reconcileDelete(clusterScope)
-			g.Expect(err).To(Not(BeNil()))
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		t.Run("Should skip deleting other resources if instances are still running", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			instancelist.TotalCount = pointer.Int64(2)
-			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, response, nil)
-			_, err := reconciler.reconcileDelete(clusterScope)
-			g.Expect(err).To(BeNil())
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		getPGWOptions := &vpcv1.GetSubnetPublicGatewayOptions{ID: pointer.String("capi-subnet-id")}
-		subnet := &vpcv1.SubnetCollection{Subnets: []vpcv1.Subnet{{ID: core.StringPtr("capi-subnet-id")}}}
-		pgw := &vpcv1.PublicGateway{ID: pointer.String("capi-pgw-id")}
-		unsetPGWOptions := &vpcv1.UnsetSubnetPublicGatewayOptions{ID: pointer.String("capi-subnet-id")}
-		deleteSubnetOptions := &vpcv1.DeleteSubnetOptions{ID: pointer.String("capi-subnet-id")}
-		deletePGWOptions := &vpcv1.DeletePublicGatewayOptions{ID: pgw.ID}
-		instancelist.TotalCount = pointer.Int64(0)
-		t.Run("Should fail deleting the subnet", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, response, nil)
-			mockvpc.EXPECT().ListSubnets(&vpcv1.ListSubnetsOptions{}).Return(subnet, response, nil)
-			mockvpc.EXPECT().GetSubnetPublicGateway(getPGWOptions).Return(pgw, response, nil)
-			mockvpc.EXPECT().UnsetSubnetPublicGateway(unsetPGWOptions).Return(response, nil)
-			mockvpc.EXPECT().DeletePublicGateway(deletePGWOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteSubnet(deleteSubnetOptions).Return(response, errors.New("failed to delete subnet"))
-			_, err := reconciler.reconcileDelete(clusterScope)
-			g.Expect(err).To(Not(BeNil()))
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		deleteFIPOptions := &vpcv1.DeleteFloatingIPOptions{ID: pointer.String("capi-fip-id")}
-		t.Run("Should fail deleting the floating IP", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, response, nil)
-			mockvpc.EXPECT().ListSubnets(&vpcv1.ListSubnetsOptions{}).Return(subnet, response, nil)
-			mockvpc.EXPECT().GetSubnetPublicGateway(getPGWOptions).Return(pgw, response, nil)
-			mockvpc.EXPECT().UnsetSubnetPublicGateway(unsetPGWOptions).Return(response, nil)
-			mockvpc.EXPECT().DeletePublicGateway(deletePGWOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteSubnet(deleteSubnetOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteFloatingIP(deleteFIPOptions).Return(response, errors.New("failed to  delete floating IP"))
-			_, err := reconciler.reconcileDelete(clusterScope)
-			g.Expect(err).To(Not(BeNil()))
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		deleteVpcOptions := &vpcv1.DeleteVPCOptions{ID: pointer.String("capi-vpc-id")}
-		t.Run("Should fail deleting the VPC", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, response, nil)
-			mockvpc.EXPECT().ListSubnets(&vpcv1.ListSubnetsOptions{}).Return(subnet, response, nil)
-			mockvpc.EXPECT().GetSubnetPublicGateway(getPGWOptions).Return(pgw, response, nil)
-			mockvpc.EXPECT().UnsetSubnetPublicGateway(unsetPGWOptions).Return(response, nil)
-			mockvpc.EXPECT().DeletePublicGateway(deletePGWOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteSubnet(deleteSubnetOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteFloatingIP(deleteFIPOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteVPC(deleteVpcOptions).Return(response, errors.New("failed to delete VPC"))
-			_, err := reconciler.reconcileDelete(clusterScope)
-			g.Expect(err).To(Not(BeNil()))
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
-		})
-		t.Run("Should successfully delete IBMVPCCluster and remove the finalizer", func(t *testing.T) {
-			g := NewWithT(t)
-			setup(t)
-			t.Cleanup(teardown)
-			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, response, nil)
-			mockvpc.EXPECT().ListSubnets(&vpcv1.ListSubnetsOptions{}).Return(subnet, response, nil)
-			mockvpc.EXPECT().GetSubnetPublicGateway(getPGWOptions).Return(pgw, response, nil)
-			mockvpc.EXPECT().UnsetSubnetPublicGateway(unsetPGWOptions).Return(response, nil)
-			mockvpc.EXPECT().DeletePublicGateway(deletePGWOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteSubnet(deleteSubnetOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteFloatingIP(deleteFIPOptions).Return(response, nil)
-			mockvpc.EXPECT().DeleteVPC(deleteVpcOptions).Return(response, nil)
-			_, err := reconciler.reconcileDelete(clusterScope)
-			g.Expect(err).To(BeNil())
-			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(Not(ContainElement(infrav1beta2.ClusterFinalizer)))
-		})
-	})
-}
-
-func TestIBMVPCClusterLBReconciler_delete(t *testing.T) {
 	setup := func(t *testing.T) (*gomock.Controller, *mock.MockVpc, *scope.ClusterScope, IBMVPCClusterReconciler) {
 		t.Helper()
 		mockvpc := mock.NewMockVpc(gomock.NewController(t))
@@ -592,9 +331,71 @@ func TestIBMVPCClusterLBReconciler_delete(t *testing.T) {
 	}
 
 	t.Run("Reconciling deleting IBMVPCCluster with LoadBalancer", func(t *testing.T) {
+		listVSIOpts := &vpcv1.ListInstancesOptions{
+			VPCID: pointer.String("capi-vpc-id"),
+		}
+		t.Run("Should fail to list instances", func(t *testing.T) {
+			g := NewWithT(t)
+			mockController, mockvpc, clusterScope, reconciler := setup(t)
+			t.Cleanup(mockController.Finish)
+			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(&vpcv1.InstanceCollection{}, &core.DetailedResponse{}, errors.New("Failed to list the VSIs"))
+			_, err := reconciler.reconcileDelete(clusterScope)
+			g.Expect(err).To(Not(BeNil()))
+			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
+		})
+		t.Run("Should skip deleting other resources if instances are still running", func(t *testing.T) {
+			g := NewWithT(t)
+			mockController, mockvpc, clusterScope, reconciler := setup(t)
+			t.Cleanup(mockController.Finish)
+			instancelist := &vpcv1.InstanceCollection{}
+			instancelist.TotalCount = pointer.Int64(2)
+			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, &core.DetailedResponse{}, nil)
+			_, err := reconciler.reconcileDelete(clusterScope)
+			g.Expect(err).To(BeNil())
+			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
+		})
+
 		instancelist := &vpcv1.InstanceCollection{
 			TotalCount: core.Int64Ptr(0),
 		}
+		subnet := &vpcv1.SubnetCollection{Subnets: []vpcv1.Subnet{{ID: core.StringPtr("capi-subnet-id")}}}
+		pgw := &vpcv1.PublicGateway{ID: pointer.String("capi-pgw-id")}
+		getPGWOptions := &vpcv1.GetSubnetPublicGatewayOptions{ID: pointer.String("capi-subnet-id")}
+		unsetPGWOptions := &vpcv1.UnsetSubnetPublicGatewayOptions{ID: pointer.String("capi-subnet-id")}
+		deletePGWOptions := &vpcv1.DeletePublicGatewayOptions{ID: pgw.ID}
+		deleteSubnetOptions := &vpcv1.DeleteSubnetOptions{ID: pointer.String("capi-subnet-id")}
+		t.Run("Should fail deleting the subnet", func(t *testing.T) {
+			g := NewWithT(t)
+			mockController, mockvpc, clusterScope, reconciler := setup(t)
+			t.Cleanup(mockController.Finish)
+			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().ListLoadBalancers(&vpcv1.ListLoadBalancersOptions{}).Return(&vpcv1.LoadBalancerCollection{}, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().ListSubnets(&vpcv1.ListSubnetsOptions{}).Return(subnet, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().GetSubnetPublicGateway(getPGWOptions).Return(pgw, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().UnsetSubnetPublicGateway(unsetPGWOptions).Return(&core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().DeletePublicGateway(deletePGWOptions).Return(&core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().DeleteSubnet(deleteSubnetOptions).Return(&core.DetailedResponse{}, errors.New("failed to delete subnet"))
+			_, err := reconciler.reconcileDelete(clusterScope)
+			g.Expect(err).To(Not(BeNil()))
+			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
+		})
+		t.Run("Should fail deleting the VPC", func(t *testing.T) {
+			g := NewWithT(t)
+			mockController, mockvpc, clusterScope, reconciler := setup(t)
+			t.Cleanup(mockController.Finish)
+			deleteVpcOptions := &vpcv1.DeleteVPCOptions{ID: pointer.String("capi-vpc-id")}
+			mockvpc.EXPECT().ListInstances(listVSIOpts).Return(instancelist, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().ListLoadBalancers(&vpcv1.ListLoadBalancersOptions{}).Return(&vpcv1.LoadBalancerCollection{}, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().ListSubnets(&vpcv1.ListSubnetsOptions{}).Return(subnet, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().GetSubnetPublicGateway(getPGWOptions).Return(pgw, &core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().UnsetSubnetPublicGateway(unsetPGWOptions).Return(&core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().DeletePublicGateway(deletePGWOptions).Return(&core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().DeleteSubnet(deleteSubnetOptions).Return(&core.DetailedResponse{}, nil)
+			mockvpc.EXPECT().DeleteVPC(deleteVpcOptions).Return(&core.DetailedResponse{}, errors.New("failed to delete VPC"))
+			_, err := reconciler.reconcileDelete(clusterScope)
+			g.Expect(err).To(Not(BeNil()))
+			g.Expect(clusterScope.IBMVPCCluster.Finalizers).To(ContainElement(infrav1beta2.ClusterFinalizer))
+		})
 
 		t.Run("Should fail deleting the LoadBalancer", func(t *testing.T) {
 			g := NewWithT(t)
