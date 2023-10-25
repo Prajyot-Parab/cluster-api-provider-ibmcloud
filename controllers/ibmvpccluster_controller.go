@@ -44,6 +44,8 @@ import (
 	"sigs.k8s.io/cluster-api-provider-ibmcloud/pkg/endpoints"
 )
 
+var LoadBalancerValid = false
+
 // IBMVPCClusterReconciler reconciles a IBMVPCCluster object.
 type IBMVPCClusterReconciler struct {
 	client.Client
@@ -126,26 +128,6 @@ func (r *IBMVPCClusterReconciler) reconcile(clusterScope *scope.ClusterScope) (c
 		}
 	}
 
-	if clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Host == "" && clusterScope.IBMVPCCluster.Spec.ControlPlaneLoadBalancer == nil {
-		fip, err := clusterScope.ReserveFIP()
-		if err != nil {
-			return ctrl.Result{}, errors.Wrapf(err, "failed to reconcile Control Plane Endpoint for IBMVPCCluster %s/%s", clusterScope.IBMVPCCluster.Namespace, clusterScope.IBMVPCCluster.Name)
-		}
-
-		if fip != nil {
-			clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint = capiv1beta1.APIEndpoint{
-				Host: *fip.Address,
-				Port: clusterScope.APIServerPort(),
-			}
-
-			clusterScope.IBMVPCCluster.Status.VPCEndpoint = infrav1beta2.VPCEndpoint{
-				Address: fip.Address,
-				FIPID:   fip.ID,
-			}
-		}
-		clusterScope.SetReady()
-	}
-
 	if clusterScope.IBMVPCCluster.Status.Subnet.ID == nil {
 		subnet, err := clusterScope.CreateSubnet()
 		if err != nil {
@@ -161,42 +143,28 @@ func (r *IBMVPCClusterReconciler) reconcile(clusterScope *scope.ClusterScope) (c
 		}
 	}
 
-	if clusterScope.IBMVPCCluster.Spec.ControlPlaneLoadBalancer != nil {
+	if clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Host != "" {
+		loadBalancerEndpoint, err := clusterScope.GetLoadBalancerByHostname(clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Host)
+		if err != nil {
+			return ctrl.Result{}, errors.Wrap(err, "Error when retrieving load balancer with specified hostname")
+		}
+
+		if loadBalancerEndpoint == nil {
+			return ctrl.Result{}, errors.Errorf("No loadBalancer found with hostname - %s", clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Host)
+		}
+
+		r.validateLoadBalancer(clusterScope, loadBalancerEndpoint)
+	} else if clusterScope.IBMVPCCluster.Spec.ControlPlaneLoadBalancer != nil {
 		loadBalancer, err := r.getOrCreate(clusterScope)
 		if err != nil {
 			return ctrl.Result{}, errors.Wrapf(err, "failed to reconcile Control Plane LoadBalancer for IBMVPCCluster %s/%s", clusterScope.IBMVPCCluster.Namespace, clusterScope.IBMVPCCluster.Name)
 		}
 
 		if loadBalancer != nil {
-			clusterScope.SetLoadBalancerID(loadBalancer.ID)
-			clusterScope.Logger.V(3).Info("LoadBalancerID - " + clusterScope.GetLoadBalancerID())
-			clusterScope.SetLoadBalancerState(*loadBalancer.ProvisioningStatus)
-			clusterScope.Logger.V(3).Info("LoadBalancerState - " + string(clusterScope.GetLoadBalancerState()))
-
-			clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint = capiv1beta1.APIEndpoint{
-				Host: *loadBalancer.Hostname,
-				Port: clusterScope.APIServerPort(),
+			if clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Host == "" {
+				clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Host = *loadBalancer.Hostname
 			}
-
-			clusterScope.IBMVPCCluster.Status.VPCEndpoint = infrav1beta2.VPCEndpoint{
-				Address: loadBalancer.Hostname,
-				LBID:    loadBalancer.ID,
-			}
-
-			switch clusterScope.GetLoadBalancerState() {
-			case infrav1beta2.VPCLoadBalancerStateCreatePending:
-				clusterScope.Logger.V(3).Info("LoadBalancer is in create state")
-				clusterScope.SetNotReady()
-				conditions.MarkFalse(clusterScope.IBMVPCCluster, infrav1beta2.LoadBalancerReadyCondition, string(infrav1beta2.VPCLoadBalancerStateCreatePending), capiv1beta1.ConditionSeverityInfo, *loadBalancer.OperatingStatus)
-			case infrav1beta2.VPCLoadBalancerStateActive:
-				clusterScope.Logger.V(3).Info("LoadBalancer is in active state")
-				clusterScope.SetReady()
-				conditions.MarkTrue(clusterScope.IBMVPCCluster, infrav1beta2.LoadBalancerReadyCondition)
-			default:
-				clusterScope.Logger.V(3).Info("LoadBalancer state is undefined", "state", clusterScope.GetLoadBalancerState(), "loadbalancer-id", clusterScope.GetLoadBalancerID())
-				clusterScope.SetNotReady()
-				conditions.MarkUnknown(clusterScope.IBMVPCCluster, infrav1beta2.LoadBalancerReadyCondition, *loadBalancer.ProvisioningStatus, "")
-			}
+			r.validateLoadBalancer(clusterScope, loadBalancer)
 		}
 	}
 
@@ -222,14 +190,32 @@ func (r *IBMVPCClusterReconciler) reconcileDelete(clusterScope *scope.ClusterSco
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 
+	if clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Host != "" && clusterScope.IBMVPCCluster.Spec.ControlPlaneLoadBalancer == nil {
+		return handleFinalizerRemoval(clusterScope)
+	}
+
 	if clusterScope.IBMVPCCluster.Spec.ControlPlaneLoadBalancer != nil {
-		deleted, err := clusterScope.DeleteLoadBalancer()
+		loadBalancer, err := clusterScope.GetLoadBalancerByHostname(clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Host)
 		if err != nil {
-			return ctrl.Result{}, errors.Wrap(err, "failed to delete loadBalancer")
+			return ctrl.Result{}, errors.Wrap(err, "Error when retrieving load balancer with specified hostname")
 		}
-		// skip deleting other resources if still have loadBalancers running.
-		if deleted {
-			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		if loadBalancer != nil {
+			LoadBalancerValid = true
+			if *loadBalancer.Name == clusterScope.IBMVPCCluster.Spec.ControlPlaneLoadBalancer.Name {
+				deleted, err := clusterScope.DeleteLoadBalancer()
+				if err != nil {
+					return ctrl.Result{}, errors.Wrap(err, "failed to delete loadBalancer")
+				}
+
+				// Skip deleting other resources if still have loadBalancers running.
+				if deleted {
+					return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+				}
+			} else {
+				return handleFinalizerRemoval(clusterScope)
+			}
+		} else if !LoadBalancerValid {
+			return handleFinalizerRemoval(clusterScope)
 		}
 	}
 
@@ -237,22 +223,48 @@ func (r *IBMVPCClusterReconciler) reconcileDelete(clusterScope *scope.ClusterSco
 		return ctrl.Result{}, errors.Wrap(err, "failed to delete subnet")
 	}
 
-	if clusterScope.IBMVPCCluster.Spec.ControlPlaneLoadBalancer == nil {
-		if err := clusterScope.DeleteFloatingIP(); err != nil {
-			return ctrl.Result{}, errors.Wrap(err, "failed to delete floatingIP")
-		}
-	}
-
 	if err := clusterScope.DeleteVPC(); err != nil {
 		return ctrl.Result{}, errors.Wrap(err, "failed to delete VPC")
 	}
-	controllerutil.RemoveFinalizer(clusterScope.IBMVPCCluster, infrav1beta2.ClusterFinalizer)
-	return ctrl.Result{}, nil
+	return handleFinalizerRemoval(clusterScope)
 }
 
 func (r *IBMVPCClusterReconciler) getOrCreate(clusterScope *scope.ClusterScope) (*vpcv1.LoadBalancer, error) {
 	loadBalancer, err := clusterScope.CreateLoadBalancer()
 	return loadBalancer, err
+}
+
+func handleFinalizerRemoval(clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+	LoadBalancerValid = false
+	controllerutil.RemoveFinalizer(clusterScope.IBMVPCCluster, infrav1beta2.ClusterFinalizer)
+	return ctrl.Result{}, nil
+}
+
+func (r *IBMVPCClusterReconciler) validateLoadBalancer(clusterScope *scope.ClusterScope, loadBalancer *vpcv1.LoadBalancer) {
+	if clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Port == 0 {
+		clusterScope.IBMVPCCluster.Spec.ControlPlaneEndpoint.Port = clusterScope.APIServerPort()
+	}
+
+	clusterScope.SetLoadBalancerID(loadBalancer.ID)
+	clusterScope.Logger.V(3).Info("LoadBalancerID - " + clusterScope.GetLoadBalancerID())
+	clusterScope.SetLoadBalancerAddress(loadBalancer.Hostname)
+	clusterScope.SetLoadBalancerState(*loadBalancer.ProvisioningStatus)
+	clusterScope.Logger.V(3).Info("LoadBalancerState - " + string(clusterScope.GetLoadBalancerState()))
+
+	switch clusterScope.GetLoadBalancerState() {
+	case infrav1beta2.VPCLoadBalancerStateCreatePending:
+		clusterScope.Logger.V(3).Info("LoadBalancer is in create state")
+		clusterScope.SetNotReady()
+		conditions.MarkFalse(clusterScope.IBMVPCCluster, infrav1beta2.LoadBalancerReadyCondition, string(infrav1beta2.VPCLoadBalancerStateCreatePending), capiv1beta1.ConditionSeverityInfo, *loadBalancer.OperatingStatus)
+	case infrav1beta2.VPCLoadBalancerStateActive:
+		clusterScope.Logger.V(3).Info("LoadBalancer is in active state")
+		clusterScope.SetReady()
+		conditions.MarkTrue(clusterScope.IBMVPCCluster, infrav1beta2.LoadBalancerReadyCondition)
+	default:
+		clusterScope.Logger.V(3).Info("LoadBalancer state is undefined", "state", clusterScope.GetLoadBalancerState(), "loadbalancer-id", clusterScope.GetLoadBalancerID())
+		clusterScope.SetNotReady()
+		conditions.MarkUnknown(clusterScope.IBMVPCCluster, infrav1beta2.LoadBalancerReadyCondition, *loadBalancer.ProvisioningStatus, "")
+	}
 }
 
 // SetupWithManager creates a new IBMVPCCluster controller for a manager.
