@@ -22,14 +22,16 @@ import (
 
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/cluster-api/util/defaulting"
+	"sigs.k8s.io/cluster-api-provider-ibmcloud/util"
 )
 
 func TestVPCMachine_default(t *testing.T) {
 	g := NewWithT(t)
 	vpcMachine := &IBMVPCMachine{ObjectMeta: metav1.ObjectMeta{Name: "capi-machine", Namespace: "default"}}
-	t.Run("Defaults for IBMVPCMachine", defaulting.DefaultValidateTest(vpcMachine))
-	vpcMachine.Default()
+	webhook := &IBMVPCMachine{}
+	t.Run("Defaults for IBMVPCMachine", util.CustomDefaultValidateTest(ctx, vpcMachine, webhook))
+	vpcMachine.Default(ctx, webhook)
+	g.Expect(webhook.Default(ctx, vpcMachine)).To(Succeed())
 	g.Expect(vpcMachine.Spec.Profile).To(BeEquivalentTo("bx2-2x8"))
 }
 

@@ -24,7 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/cluster-api/util/defaulting"
+	"sigs.k8s.io/cluster-api-provider-ibmcloud/util"
 )
 
 func TestIBMPowerVSMachine_default(t *testing.T) {
@@ -37,15 +37,23 @@ func TestIBMPowerVSMachine_default(t *testing.T) {
 		Spec: IBMPowerVSMachineSpec{
 			MemoryGiB:  4,
 			Processors: intstr.FromString("0.5"),
+		},
+	}
+
+	webhook := &IBMPowerVSMachine{
+		Spec: IBMPowerVSMachineSpec{
 			Image: &IBMPowerVSResourceReference{
 				ID: ptr.To("capi-image"),
 			},
 		},
 	}
-	t.Run("Defaults for IBMPowerVSMachine", defaulting.DefaultValidateTest(powervsMachine))
-	powervsMachine.Default()
+	t.Run("Defaults for IBMPowerVSMachine", util.CustomDefaultValidateTest(ctx, powervsMachine, webhook))
+	powervsMachine.Default(ctx, webhook)
+	g.Expect(webhook.Default(ctx, powervsMachine)).To(Succeed())
 	g.Expect(powervsMachine.Spec.SystemType).To(BeEquivalentTo("s922"))
 	g.Expect(powervsMachine.Spec.ProcessorType).To(BeEquivalentTo(PowerVSProcessorTypeShared))
+	g.Expect(powervsMachine.Spec.MemoryGiB).To(BeEquivalentTo(4))
+	g.Expect(powervsMachine.Spec.Processors).To(BeEquivalentTo(intstr.FromString("0.5")))
 }
 
 func TestIBMPowerVSMachine_create(t *testing.T) {

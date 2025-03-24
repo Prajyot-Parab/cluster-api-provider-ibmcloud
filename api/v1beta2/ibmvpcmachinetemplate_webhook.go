@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta2
 
 import (
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
@@ -24,6 +25,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"context"
+	"fmt"
 )
 
 // log is for logging in this package.
@@ -31,42 +35,60 @@ var ibmvpcmachinetemplatelog = logf.Log.WithName("ibmvpcmachinetemplate-resource
 
 func (r *IBMVPCMachineTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+		For(&IBMVPCMachineTemplate{}).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
+var _ webhook.CustomValidator = &IBMVPCMachineTemplate{}
+var _ webhook.CustomDefaulter = &IBMVPCMachineTemplate{}
+
 //+kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1beta2-ibmvpcmachinetemplate,mutating=true,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=ibmvpcmachinetemplates,verbs=create;update,versions=v1beta2,name=mibmvpcmachinetemplate.kb.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 
-var _ webhook.Defaulter = &IBMVPCMachineTemplate{}
-
-// Default implements webhook.Defaulter so a webhook will be registered for the type.
-func (r *IBMVPCMachineTemplate) Default() {
+// Default implements webhook.CustomDefaulter so a webhook will be registered for the type.
+func (r *IBMVPCMachineTemplate) Default(_ context.Context, obj runtime.Object) error {
 	ibmvpcmachinetemplatelog.Info("default", "name", r.Name)
+	_, ok := obj.(*IBMVPCMachineTemplate)
+	if !ok {
+		return apierrors.NewBadRequest(fmt.Sprintf("expected a IBMVPCMachineTemplate but got a %T", obj))
+	}
 	defaultIBMVPCMachineSpec(&r.Spec.Template.Spec)
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta2-ibmvpcmachinetemplate,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=ibmvpcmachinetemplates,versions=v1beta2,name=vibmvpcmachinetemplate.kb.io,sideEffects=None,admissionReviewVersions=v1;v1beta1
 
-var _ webhook.Validator = &IBMVPCMachineTemplate{}
-
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type.
-func (r *IBMVPCMachineTemplate) ValidateCreate() (admission.Warnings, error) {
+// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type.
+func (r *IBMVPCMachineTemplate) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	ibmvpcmachinetemplatelog.Info("validate create", "name", r.Name)
+	_, ok := obj.(*IBMVPCMachineTemplate)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a IBMVPCMachineTemplate but got a %T", obj))
+	}
 	var allErrs field.ErrorList
 	allErrs = append(allErrs, r.validateIBMVPCMachineBootVolume()...)
 
 	return nil, aggregateObjErrors(r.GroupVersionKind().GroupKind(), r.Name, allErrs)
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type.
-func (r *IBMVPCMachineTemplate) ValidateUpdate(_ runtime.Object) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type.
+func (r *IBMVPCMachineTemplate) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	ibmvpcmachinetemplatelog.Info("validate update", "name", r.Name)
+	_, ok := oldObj.(*IBMVPCMachineTemplate)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a IBMVPCMachineTemplate but got a %T", oldObj))
+	}
+	_, ok = newObj.(*IBMVPCMachineTemplate)
+	if !ok {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a IBMVPCMachineTemplate but got a %T", newObj))
+	}
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type.
-func (r *IBMVPCMachineTemplate) ValidateDelete() (admission.Warnings, error) {
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type.
+func (r *IBMVPCMachineTemplate) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	ibmvpcmachinetemplatelog.Info("validate delete", "name", r.Name)
 	return nil, nil
 }
