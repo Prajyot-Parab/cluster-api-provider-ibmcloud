@@ -551,9 +551,11 @@ verify-gen: generate ## Verfiy go generated files are up to date
 verify-conversions: $(CONVERSION_VERIFIER) ## Verifies expected API conversion are in place
 	$(CONVERSION_VERIFIER)
 
+TRIVY_VER := 0.59.1
+
 .PHONY: verify-container-images
-verify-container-images: $(TRIVY) ## Verify container images
-	TRACE=$(TRACE) ./hack/verify-container-images.sh
+verify-container-images: ## Verify container images
+	TRACE=$(TRACE) ./hack/verify-container-images.sh $(TRIVY_VER)
 
 .PHONY: verify-govulncheck
 verify-govulncheck: $(GOVULNCHECK) ## Verify code for vulnerabilities

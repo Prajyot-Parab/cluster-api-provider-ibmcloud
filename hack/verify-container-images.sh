@@ -22,9 +22,11 @@ if [[ "${TRACE-0}" == "1" ]]; then
     set -o xtrace
 fi
 
+VERSION=${1}
 GO_ARCH="$(go env GOARCH)"
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
+"${REPO_ROOT}/hack/ensure-trivy.sh" "${VERSION}"
 
 TRIVY="${REPO_ROOT}/hack/tools/bin/trivy"
 
