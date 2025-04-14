@@ -19,7 +19,7 @@ require (
 	sigs.k8s.io/cluster-api/hack/tools v0.0.0-20250325164633-15d7e4890c74
 	sigs.k8s.io/controller-runtime/tools/setup-envtest v0.0.0-20241202165100-3e6681045387
 	sigs.k8s.io/controller-tools v0.17.0
-	sigs.k8s.io/kustomize/kustomize/v5 v5.4.3
+	sigs.k8s.io/kustomize/kustomize/v5 v5.6.0
 )
 
 require (
@@ -285,7 +285,7 @@ require (
 	github.com/gomarkdown/markdown v0.0.0-20240328165702-4d01890c35c0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/certificate-transparency-go v1.1.8 // indirect
-	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49 // indirect
+	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-containerregistry v0.20.2 // indirect
 	github.com/google/go-github/v55 v55.0.0 // indirect
@@ -557,7 +557,6 @@ require (
 	go.opentelemetry.io/otel/sdk v1.34.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.34.0 // indirect
 	go.opentelemetry.io/otel/trace v1.34.0 // indirect
-	go.starlark.net v0.0.0-20230525235612-a134d8f9ddca // indirect
 	go.step.sm/crypto v0.44.2 // indirect
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
@@ -602,7 +601,7 @@ require (
 	k8s.io/component-base v0.32.3 // indirect
 	k8s.io/gengo/v2 v2.0.0-20240911193312-2b36238f13e9 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
-	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect
+	k8s.io/kube-openapi v0.0.0-20241212222426-2c72e554b1e7 // indirect
 	k8s.io/kubectl v0.31.2 // indirect
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect
@@ -620,9 +619,9 @@ require (
 	sigs.k8s.io/cluster-api v0.0.0-00010101000000-000000000000 // indirect
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
 	sigs.k8s.io/kubebuilder/docs/book/utils v0.0.0-20211028165026-57688c578b5d // indirect
-	sigs.k8s.io/kustomize/api v0.17.3 // indirect
-	sigs.k8s.io/kustomize/cmd/config v0.14.2 // indirect
-	sigs.k8s.io/kustomize/kyaml v0.17.2 // indirect
+	sigs.k8s.io/kustomize/api v0.19.0 // indirect
+	sigs.k8s.io/kustomize/cmd/config v0.19.0 // indirect
+	sigs.k8s.io/kustomize/kyaml v0.19.0 // indirect
 	sigs.k8s.io/mdtoc v1.3.0 // indirect
 	sigs.k8s.io/promo-tools/v3 v3.6.0 // indirect
 	sigs.k8s.io/release-sdk v0.11.0 // indirect
