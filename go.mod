@@ -1,8 +1,7 @@
 module sigs.k8s.io/cluster-api-provider-ibmcloud
 
 go 1.22.0
-
-toolchain go1.22.9
+toolchain go1.24.1
 
 // Keep these modules sync with sigs.k8s.io/cluster-api repository
 replace (
@@ -13,9 +12,9 @@ replace (
 
 require (
 	github.com/IBM-Cloud/power-go-client v1.11.0
-	github.com/IBM/go-sdk-core/v5 v5.18.5
+	github.com/IBM/go-sdk-core/v5 v5.19.0
 	github.com/IBM/ibm-cos-sdk-go v1.12.1
-	github.com/IBM/networking-go-sdk v0.45.0
+	github.com/IBM/networking-go-sdk v0.51.4
 	github.com/IBM/platform-services-go-sdk v0.77.1
 	github.com/IBM/vpc-go-sdk v0.64.1
 	github.com/blang/semver/v4 v4.0.0
@@ -24,17 +23,17 @@ require (
 	github.com/go-openapi/strfmt v0.23.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/go-cmp v0.7.0
-	github.com/onsi/ginkgo/v2 v2.22.0
-	github.com/onsi/gomega v1.36.0
+	github.com/onsi/ginkgo/v2 v2.23.4
+	github.com/onsi/gomega v1.37.0
 	github.com/pkg/errors v0.9.1
 	github.com/ppc64le-cloud/powervs-utils v0.0.0-20240610070307-1c0d75a5c247
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/mock v0.5.0
-	golang.org/x/crypto v0.33.0
-	golang.org/x/net v0.35.0
-	golang.org/x/text v0.22.0
+	golang.org/x/crypto v0.36.0
+	golang.org/x/net v0.37.0
+	golang.org/x/text v0.23.0
 	k8s.io/api v0.31.3
 	k8s.io/apiextensions-apiserver v0.31.3
 	k8s.io/apimachinery v0.31.3
@@ -170,9 +169,9 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/oauth2 v0.24.0 // indirect
-	golang.org/x/sync v0.11.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/term v0.29.0 // indirect
+	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/term v0.30.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
